@@ -1,21 +1,5 @@
-import smtplib
-
-sender = 'tintin10q@hotmail.com'
-receivers = ['tintin10q@hotmail.com']
-
-message = """From: From Person <tintin10q@hotmail.com>
-To: To Person <tintin10q@hotmail.com>
-Subject: Email test
-
-This is a test e-mail message.
-
-Groeten,
-Quinten
-"""
-
-try:
-   smtpObj = smtplib.SMTP('localhost')
-   smtpObj.sendmail(sender, receivers, message)         
-   print("Successfully sent email")
-except SMTPException:
-   print("Error: unable to send email")
+a = [1,2,3,4,5,6,7,8,9,10]
+for i in a:
+    if i in (2,3):
+        continue
+    print(i)

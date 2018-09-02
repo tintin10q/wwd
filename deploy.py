@@ -83,6 +83,9 @@ class Player():
     def __str__(self):
         return "Speler: {}\nHij/zij is {}\n----------------".format(self.member.name,self.rol_display_name)
 
+class Vote():
+    pass
+
 class MyClient(discord.Client):
     async def on_ready(self):
         print('Logged in as')
@@ -113,19 +116,88 @@ class MyClient(discord.Client):
                 self.het_plein_channel = await self.server.create_text_channel("Het plein",category=self.weerwolfen_category)
                 self.cupido_channel = await self.server.create_text_channel("Cupido",category=self.weerwolfen_category)
                 self.ziener_channel = await self.server.create_text_channel("Ziener",category=self.weerwolfen_category)
-                self.weerwolfen_channel = await self.server.create_text_channel("Weerwolfen Chat",category=self.weerwolfen_category)
+                self.weerwolfen_channel = await self.server.create_text_channel("Weerwolfen",category=self.weerwolfen_category)
                 self.heks_channel = await self.server.create_text_channel("Heks",category=self.weerwolfen_category)
                 self.geliefde_channel = await self.server.create_text_channel("Geliefde chat",category=self.weerwolfen_category)
-                self.geliefde_channel = await self.server.create_text_channel("Jager",category=self.weerwolfen_category)
+                self.jager_channel = await self.server.create_text_channel("Jager",category=self.weerwolfen_category)
                 #voice
-                self.geliefde_channel = await self.server.create_voice_channel("🌞 Dag",category=self.weerwolfen_category)
-                self.geliefde_channel = await self.server.create_voice_channel("🌙 Nacht",category=self.weerwolfen_category)
+                self.dag_channel = await self.server.create_voice_channel("🌞 Dag",category=self.weerwolfen_category)
+                self.nacht_channel = await self.server.create_voice_channel("🌙 Nacht",category=self.weerwolfen_category)
 
-                await self.server.create_role(name="spel Weerwolfen",mentionable=True)
+                self.channel_dict = {"Het plein:":self.het_plein_channel,
+                                     "Cupido":self.cupido_channel,
+                                     "Ziener":self.ziener_channel,
+                                     "Weerwolf":self.weerwolfen_channel,
+                                     "Heks":self.heks_channel,
+                                     "Geliefde":self.geliefde_channel,
+                                     "Jager":self.jager_channel,
+                                     "Dag":self.dag_channel,
+                                     "Nacht":self.nacht_channel}
+
+                self.weerwolfen_spel_rol = await self.server.create_role(name="spel Weerwolfen",mentionable=True)
 
                 for i in self.weerwolfen_category.channels:
                     await i.set_permissions(target=self.server.default_role, read_messages=False)
-                        
+                await self.het_plein_channel.set_permissions(target=self.weerwolfen_spel_rol,send_messages=True,read_messages=True)
+                await self.dag_channel.set_permissions(target=self.weerwolfen_spel_rol,connect=True, speak=True, use_voice_activation=True,read_messages=True)
+
+
+                for i in self.server.members:
+                    await i.add_roles(self.weerwolfen_spel_rol)
+
+                return
+            # Start commando
+            if self.bericht_text[0] == "!start":
+                self.player_lijst = []
+                self.weerwolfen_rol = [i for i in self.server.roles if i.name == "spel Weerwolfen"][0]
+
+                for member in self.weerwolfen_rol.members:
+                    self.player_lijst.append(Player(member))
+                    await message.channel.send(member.name)
+                shuffle(self.player_lijst)
+                self.player_hoeveelheid = len(self.player_lijst)
+                if self.player_hoeveelheid < 7:
+                    await message.channel.send("Te weinig spelers doen mee.\nGeef meer leden de Weerwolf spel rol")
+                    return
+
+                self.rollen_lijst = await self.get_game_rollen(self.player_hoeveelheid)
+                if len(self.rollen_lijst) == self.player_hoeveelheid:
+                    for speler, rol in zip(self.player_lijst,self.rollen_lijst):
+                        speler.rol = rol                                            # Doe rol object in de player class
+                        await speler.member.add_roles(rol)                          # Voeg rol toe aan member
+                        speler.rol_display_name = rol.name                          # Voeg display name toe aan member
+                        await rol.edit(name=id_generator())                         # Verander rol naam in random string
+                        # await message.channel.send(str(speler))
+
+                        if not speler.member.bot:                                   # Als speler niet bot stuur dan bericht met info
+                            await speler.member.send(embed=discord.Embed(description="Jij bent {}".format(speler.rol_display_name),colour=discord.Colour(value=1412412)),delete_after=30)
+
+                    for i in self.player_lijst:
+                        if i.rol_display_name == "Burger":
+                            continue
+                        await self.channel_dict[i.rol_display_name].set_permissions(target=i.rol,read_messages=True,send_messages=True)
+                        if i.rol_display_name == "Weerwolf":
+                            await self.nacht_channel.set_permissions(target=i.rol,connect=True,speak=True,use_voice_activation=True)
+
+                return
+
+            # !Clean
+            if self.bericht_text[0] == "!clean":
+                cool = []
+                for i in self.server.roles:
+                    if i.name != "spel Weerwolfen":
+                        if i.name in ("Jager","Weerwolf","Cupido","Ziener","Heks","Burger") or i.name[:4] == "spel":
+                            cool.append(i)
+
+                for i in cool:
+                    await i.delete()
+
+                return
+
+            # !join all
+            if self.bericht_text[0] == "!join" and self.bericht_text[1] == "all":
+                for i in self.server.members:
+                    await i.add_roles(self.weerwolfen_spel_rol)
                 return
 
 
@@ -148,45 +220,11 @@ class MyClient(discord.Client):
                     if i.name[:4] == "spel":
                         delete_list.append(i)
 
-                for i in delete_list: # anders lukt het niet goed
+                for i in delete_list:  # anders lukt het niet goed
                     await i.delete()
                 return
 
-
-            # Start commando
-            if self.bericht_text[0] == "!start":
-                self.player_lijst = []
-                self.weerwolfen_rol = [i for i in self.server.roles if i.name == "spel Weerwolfen"][0]
-
-                for member in self.weerwolfen_rol.members:
-                    self.player_lijst.append(Player(member))
-                shuffle(self.player_lijst)
-                self.player_hoeveelheid = len(self.player_lijst)
-                if self.player_hoeveelheid < 7:
-                    await message.channel.send("Te weinig spelers doen mee.\nGeef meer leden de Weerwolf spel rol")
-                    return
-
-                self.rollen_lijst = await self.get_game_rollen(self.player_hoeveelheid)
-                self.server
-                if len(self.rollen_lijst) == self.player_hoeveelheid:
-                    for speler, rol in zip(self.player_lijst,self.rollen_lijst):
-                        speler.rol = rol                                            # Doe rol object in de player class
-                        await speler.member.add_roles(rol)                          # Voeg rol toe aan member
-                        speler.rol_display_name = rol.name                          # Voeg display name toe aan member
-                        await rol.edit(name=id_generator())                         # Verander rol naam in random string
-                        await message.channel.send(str(speler))
-
-            # !Clean
-            if self.bericht_text[0] == "!clean":
-                cool = []
-                for i in self.server.roles:
-                    if i.name != "spel Weerwolfen":
-                        if i.name in ("Jager","Weerwolf","Cupido","Ziener","Heks","Burger") or i.name[:4] == "spel":
-                            cool.append(i)
-
-                for i in cool:
-                    await i.delete()
-
+            if self.bericht_text[0] == "!test":
                 return
 
     async def get_game_rollen(self,player_hoeveelheid):
