@@ -70,6 +70,7 @@ description = 'Testing...'
 import discord
 from random import shuffle, choice
 import string
+from io import BytesIO
 from time import sleep
 
 class Player():
@@ -224,7 +225,16 @@ class MyClient(discord.Client):
                     await i.delete()
                 return
 
-            if self.bericht_text[0] == "!test":
+            if self.bericht_text[0] == "!purge":
+                try:
+                    if len(self.bericht_text) == 1 or self.bericht_text[1] == 1:
+                        hoeveel_messages = 2
+                    else:
+                        hoeveel_messages = int(self.bericht_text[1])+1
+
+                    await message.channel.purge(limit=hoeveel_messages)
+                except ValueError:
+                    await message.channel.send("Geen getal gegeven",delete_after=7)
                 return
 
     async def get_game_rollen(self,player_hoeveelheid):
