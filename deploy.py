@@ -74,6 +74,7 @@ from io import BytesIO
 from time import sleep
 
 class Player():
+    # Dit is een player class van iemand die meedoet
     def __init__(self,member):
         self.member = member
         self.rol = None
@@ -85,9 +86,27 @@ class Player():
         return "Speler: {}\nHij/zij is {}\n----------------".format(self.member.name,self.rol_display_name)
 
 class Vote():
-    pass
+    emoji_lijst = []
+    def __init__(self,member_lijst,bericht,channel):
+        self.bericht = bericht
+        self.member_lijst = member_lijst
+        self.channel = channel
+
+    async def send_message(self):
+        for member,emoji in self.memeber_lijst, Vote.emoji_lijst:
+            #maak de message
+            pass
+
+            # stuur de message
+            # add reactions
+
+        self.message
+        self.message = await self.channel.send(self.bericht)
+        self.message.add_reaction
+
 
 class MyClient(discord.Client):
+    # Dit is de custom bot class van de rewrite
     async def on_ready(self):
         print('Logged in as')
         print(self.user.name)
@@ -99,12 +118,11 @@ class MyClient(discord.Client):
 
 
     async def on_message(self, message):
+        # dit triggert als er een message komt
+        self.server = message.guild         # van welke server kwam de message
+        self.bericht_text = message.content.split()     # split de bericht text
 
-        self.message_channel = message.channel
-        self.server = message.guild
-        self.bericht_text = message.content.split()
-
-        if message.author != client.user:
+        if message.author != client.user:                   # check of auteur niet bot is zodat je niet dood gespamt wordt
             self.bericht_text = message.content.split()
 
             #Add text channels
@@ -137,22 +155,19 @@ class MyClient(discord.Client):
 
                 self.weerwolfen_spel_rol = await self.server.create_role(name="spel Weerwolfen",mentionable=True)
 
+                # set permissions op de channels
                 for i in self.weerwolfen_category.channels:
                     await i.set_permissions(target=self.server.default_role, read_messages=False)
                 await self.het_plein_channel.set_permissions(target=self.weerwolfen_spel_rol,send_messages=True,read_messages=True)
                 await self.dag_channel.set_permissions(target=self.weerwolfen_spel_rol,connect=True, speak=True, use_voice_activation=True,read_messages=True)
 
 
-                for i in self.server.members:
-                    await i.add_roles(self.weerwolfen_spel_rol)
-
-                return
             # Start commando
             if self.bericht_text[0] == "!start":
                 self.player_lijst = []
-                self.weerwolfen_rol = [i for i in self.server.roles if i.name == "spel Weerwolfen"][0]
 
-                for member in self.weerwolfen_rol.members:
+
+                for member in self.weerwolfen_spel_rol.members:
                     self.player_lijst.append(Player(member))
                     await message.channel.send(member.name)
                 shuffle(self.player_lijst)
@@ -180,6 +195,9 @@ class MyClient(discord.Client):
                         if i.rol_display_name == "Weerwolf":
                             await self.nacht_channel.set_permissions(target=i.rol,connect=True,speak=True,use_voice_activation=True)
 
+                    # Eerste nacht
+                    self.het_plein_channel.send("Het is nacht cupdio wordt wakker en wijst 2 geliefde aan")
+                    self.cupido_channel.send(Vote(bericht="Cupido wijs 2 gelefde aan"))
                 return
 
             # !Clean
@@ -263,8 +281,21 @@ class MyClient(discord.Client):
         shuffle(rollen_lijst)
         return rollen_lijst
 
+    async def on_reaction_add(self,reaction, user):
+        # kijk in welk channel de reaction is
+        # doe de logica voor dat channel en ga naar de volgende
+        # hou een current rol bij
+        self.react_channel = reaction.message.channel
+
+        # cupido
+        if self.react_channel.name == "Cupido":
+
+        pass
+
 def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
     return "spel"+''.join(choice(chars) for _ in range(size))
+
+
 
 client = MyClient()
 client.run("NDg0MzIxNDAyMTcwNzY5NDE4.DmgTcQ.x9jzBwYQC1OR3rHd9Grqw527nT0")
