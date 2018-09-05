@@ -78,44 +78,57 @@ class Player():
     # Dit is een player class van iemand die meedoet
     def __init__(self,member):
         self.member = member
+        self.name = self.member.name
         self.rol = None
         self.rol_display_name = None
+        self.in_love = "alone"
         self.levend = True
         self.burgermeester = False
 
     def __str__(self):
-        return "Speler: {}\nHij/zij is {}\n----------------".format(self.member.name,self.rol_display_name)
+        return "Speler: {}\nHij/zij is {}\n----------------".format(self.name,self.rol_display_name)
 
 class Vote():
     emoji_lijst = ["0⃣","1⃣","2⃣","3⃣","4⃣","5⃣","6⃣","7⃣","8⃣","9⃣","🔟","💟","☮","✝","☪","🕉","☸","✡","🕎","☯","☦","🛐","⛎","♈","♉","⚛","♋","♌","♍","♎","♏","♐","🈚","♒","♓","🆔","⚛"]
-    def __init__(self,member_lijst,message_text,channel):
+    def __init__(self, speler_lijst, message_text, channel):
         self.message_text = message_text + '\n'
-        self.member_lijst = member_lijst
+        self.speler_lijst = speler_lijst
         self.channel = channel
-        self.member_aantal = len(member_lijst)
+        self.member_aantal = len(speler_lijst)
+        self.vote = []
         self.emoji_to_member_dict = {}
         self.member_to_emoji_dict = {}
-        for member,emoji in zip(self.member_lijst, Vote.emoji_lijst):
-            self.member_to_emoji_dict[member] = emoji
-        for member,emoji in zip(self.member_lijst, Vote.emoji_lijst):
-            self.emoji_to_member_dict[emoji] = member
+        for speler,emoji in zip(self.speler_lijst, Vote.emoji_lijst):
+            self.member_to_emoji_dict[speler] = emoji
+        for speler,emoji in zip(self.speler_lijst, Vote.emoji_lijst):
+            self.emoji_to_member_dict[emoji] = speler
 
     async def send_message(self):
         # stuur de message
         # add reactions
-        for member,emoji in zip(self.member_lijst, Vote.emoji_lijst):
-            self.message_text += "{}    -   {}\n".format(emoji,member.name)
+        for speler,emoji in zip(self.speler_lijst, Vote.emoji_lijst):
+            self.message_text += "{}    -   {}\n".format(emoji,speler.name)
         self.message = await self.channel.send(self.message_text)
 
-        for member in self.member_lijst:
-            await self.message.add_reaction(self.member_to_emoji_dict[member])
+        for speler in self.speler_lijst:
+            await self.message.add_reaction(self.member_to_emoji_dict[speler])
 
-    async def cupido(self,channel,vote_list):
-        geliefden = [self.emoji_to_member_dict[i] for i in vote_list]
-        for member in self.member_lijst:
-            if member.naam in geliefden:
-                await channel.set_permissions(member,read_messages=True,send_messages=True)
-        return "Weerwolfen"
+    async def cupido(self,channel):
+        geliefden = [self.emoji_to_member_dict[i.emoji] for i in self.vote]
+        await channel.set_permissions(target=geliefden[0].member, read_messages=True, send_messages=True)
+        await channel.set_permissions(target=geliefden[1].member, read_messages=True, send_messages=True)
+
+        geliefden[0].in_love = geliefden[1] # zet elkaar in elkaars player class
+        geliefden[1].in_love = geliefden[0] # zet elkaar in elkaars players class
+        await self.channel.send("{} en {} zijn intens verlieft op elkaar geworden".format(geliefden[0].name, geliefden[1].name))
+        return
+
+    async def ziener(self,reaction):
+        target = self.emoji_to_member_dict[reaction.emoji]
+        await reaction.message.channel.send("{} is {}".format(target.name,target.rol_display_name))
+        return
+
+
 
 
 
@@ -129,7 +142,6 @@ class MyClient(discord.Client):
         print('----------------')
         print(self.guilds)
         self.init = False
-        self.vote = []
 
 
     async def on_message(self, message):
@@ -201,7 +213,7 @@ class MyClient(discord.Client):
                         # await message.channel.send(str(speler))
 
                         if not speler.member.bot:                                   # Als speler niet bot stuur dan bericht met info
-                            await speler.member.send(embed=discord.Embed(description="You are {}".format(speler.rol_display_name),colour=discord.Colour(value=1412412)))
+                            await speler.member.send(delete_after=30,embed=discord.Embed(description="You are {}".format(speler.rol_display_name),colour=discord.Colour(value=1412412)))
 
                     for i in self.player_lijst:
                         if i.rol_display_name == "Burger":
@@ -212,7 +224,9 @@ class MyClient(discord.Client):
 
                     # Eerste nacht
                     await self.het_plein_channel.send("Het is nacht cupido wordt wakker en wijst 2 geliefde aan")
-                    self.cupio_vote = await Vote(message_text="Cupido wijst 2 gelefde aan",member_lijst=self.weerwolfen_spel_rol.members,channel=self.cupido_channel).send_message()
+                    self.cupido_vote = Vote(message_text="Cupido wijst 2 gelefde aan",speler_lijst=self.player_lijst,channel=self.cupido_channel)
+                    await self.cupido_vote.send_message()
+                    self.gameloop_currentrol = "cupido"
                 return
 
             # !Clean
@@ -232,7 +246,7 @@ class MyClient(discord.Client):
             if self.bericht_text[0] == "!join" and self.bericht_text[1] == "all":
                 for i in self.server.members:
                     await i.add_roles(self.weerwolfen_spel_rol)
-                await message.channel.send("Done")
+                await message.channel.send("Done",delete_after=2)
                 return
 
 
@@ -272,8 +286,6 @@ class MyClient(discord.Client):
                     await message.channel.send("Geen getal gegeven",delete_after=7)
                 return
 
-            if self.bericht_text[0] == "!respond":
-                await message.add_reaction(":regional_indicator_c:")
 
     async def get_game_rollen(self,player_hoeveelheid):
         rollen_lijst = [await self.server.create_role(name="Cupido"),
@@ -309,17 +321,52 @@ class MyClient(discord.Client):
 
         # kijk in welk channel de reaction is
         # doe de logica voor dat channel en ga naar de volgende
-        # hou een current rol bij
 
-        # de reaction ding runt niet
         self.react_channel = reaction.message.channel
 
         # cupido
-        if self.react_channel.name == "cupido":
-            print("yo",self.vote)
-            self.vote.append(reaction)
-            if len(self.vote) == 2 and self.vote[0].count == 2 and self.vote[1].count == 2: # look for 2 reactions and they should have a count of 2
-                self.cupio_vote.cupido(channel=self.geliefde_channel,vote_list=self.vote)
+        if self.react_channel.name == "cupido" and self.gameloop_currentrol == "cupido":
+
+            self.cupido_vote.vote.append(reaction)
+            if self.get_reaction_amount(reaction) == 2:          # look for 2 reactions and they should have a count of 2
+                await self.cupido_vote.cupido(channel=self.geliefde_channel)
+                del self.cupido_vote
+
+                await reaction.message.delete()
+
+                # we gaan nu naar ziener
+                self.gameloop_currentrol = "ziener"
+                await self.het_plein_channel.send("De ziener wordt wakker en bekijkt iemands persoonlijkheid")
+                self.ziener_vote = Vote(message_text="Wie wil de ziener bekijken", speler_lijst=self.player_lijst,
+                                        channel=self.ziener_channel)
+                await self.ziener_vote.send_message()
+
+
+        # Ziener
+        if self.react_channel.name == "ziener" and self.gameloop_currentrol == "ziener":
+            await self.ziener_vote.ziener(reaction=reaction)
+            del self.ziener_vote
+            await reaction.message.delete()
+
+            # we gaan nu over naar weerwolfen
+            self.gameloop_currentrol = "weerwolf"
+            await self.het_plein_channel.send("De weerwolfen worden wakker opzoek naar een midnight snack")
+            self.weerwolfen_vote = Vote(message_text="Wie gaan julie opeten", speler_lijst=[speler for speler in self.player_lijst if speler.rol_display_name != "Weerwolf"],
+                                    channel=self.weerwolfen_channel)
+            await self.weerwolfen_vote.send_message()
+
+
+        if self.react_channel.name == "weerwolfen" and self.gameloop_currentrol == "weerwolf":
+
+            pass
+
+    def get_reaction_amount(self,reaction):
+        count = 0
+        emoji_count = len(reaction.message.reactions)       # Hoeveel emoji's zijn er
+        for emoji in reaction.message.reactions:            # ga door alle reacties heen
+            count += emoji.count
+        count -= emoji_count                                # hier hou je alleen de exstra reacties over
+        return count
 
 def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
     return "spel"+''.join(choice(chars) for _ in range(size))
