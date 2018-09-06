@@ -1,4 +1,8 @@
 ''''
+To do:
+    weerwolfen hebben geen acces tot nacht chat
+    maar voice channel permissions
+------------------------------------------------------------------------------------------------------------------------
 Discord:
 
 $ Weerwolven van wakeredam
@@ -86,13 +90,13 @@ class Player():
         self.burgermeester = False
 
     def __str__(self):
-        return "Speler: {}\nHij/zij is {}\n----------------".format(self.name,self.rol_display_name)
+        return "<naam={}>".format(self.name)
 
 class Vote():
     emoji_lijst = ["0⃣","1⃣","2⃣","3⃣","4⃣","5⃣","6⃣","7⃣","8⃣","9⃣","🔟","💟","☮","✝","☪","🕉","☸","✡","🕎","☯","☦","🛐","⛎","♈","♉","⚛","♋","♌","♍","♎","♏","♐","🈚","♒","♓","🆔","⚛"]
-    def __init__(self, speler_lijst, message_text, channel):
+    def __init__(self, speler_lijst, message_text, channel,context="spelers"):
         self.message_text = message_text + '\n'
-        self.speler_lijst = speler_lijst
+        self.speler_lijst = speler_lijst # Dit moet eigenlijk data heten
         self.channel = channel
         self.member_aantal = len(speler_lijst)
         self.vote = []
@@ -106,8 +110,12 @@ class Vote():
     async def send_message(self):
         # stuur de message
         # add reactions
+
         for speler,emoji in zip(self.speler_lijst, Vote.emoji_lijst):
-            self.message_text += "{}    -   {}\n".format(emoji,speler.name)
+            if isinstance(speler,Player):
+                self.message_text += "{}    -   {}\n".format(emoji,speler.name)
+            else:
+                self.message_text += "{}    -   {}\n".format(emoji, speler)
         self.message = await self.channel.send(self.message_text)
 
         for speler in self.speler_lijst:
@@ -128,10 +136,18 @@ class Vote():
         await reaction.message.channel.send("{} is {}".format(target.name,target.rol_display_name))
         return
 
+    async def weerwolf(self,reaction):
+        target = self.emoji_to_member_dict[reaction.emoji]
+        await reaction.message.channel.send("{} is opgegeten".format(target.name))
+        return target
 
+    async def heks_moord(self,reaction):
+        target = self.emoji_to_member_dict[reaction.emoji]
+        await reaction.message.channel.send("Je hebt {} vergiftigt".format(target.name))
+        return target
 
-
-
+    def heks_leven(self,reaction):
+        return self.emoji_to_member_dict[reaction.emoji]
 
 class MyClient(discord.Client):
     # Dit is de custom bot class van de rewrite
@@ -186,7 +202,7 @@ class MyClient(discord.Client):
                 for i in self.weerwolfen_category.channels:
                     await i.set_permissions(target=self.server.default_role, read_messages=False)
                 await self.het_plein_channel.set_permissions(target=self.weerwolfen_spel_rol,send_messages=True,read_messages=True)
-                await self.dag_channel.set_permissions(target=self.weerwolfen_spel_rol,connect=True, speak=True, use_voice_activation=True,read_messages=True)
+                await self.dag_channel.set_permissions(target=self.weerwolfen_spel_rol,connect=False, speak=True, use_voice_activation=True,read_messages=True)
 
 
             # Start commando
@@ -220,7 +236,8 @@ class MyClient(discord.Client):
                             continue
                         await self.channel_dict[i.rol_display_name].set_permissions(target=i.rol,read_messages=True,send_messages=True)
                         if i.rol_display_name == "Weerwolf":
-                            await self.nacht_channel.set_permissions(target=i.rol,connect=True,speak=True,use_voice_activation=True)
+                            print("yyoy weerwolfen voice permiisons")
+                            await self.nacht_channel.set_permissions(target=i.rol,read_messages=True,connect=True,speak=True,use_voice_activation=True)
 
                     # Eerste nacht
                     await self.het_plein_channel.send("Het is nacht cupido wordt wakker en wijst 2 geliefde aan")
@@ -341,6 +358,10 @@ class MyClient(discord.Client):
                                         channel=self.ziener_channel)
                 await self.ziener_vote.send_message()
 
+                # heks stuff
+                self.levendrankje = True
+                self.dooddrankje = True
+
 
         # Ziener
         if self.react_channel.name == "ziener" and self.gameloop_currentrol == "ziener":
@@ -354,11 +375,53 @@ class MyClient(discord.Client):
             self.weerwolfen_vote = Vote(message_text="Wie gaan julie opeten", speler_lijst=[speler for speler in self.player_lijst if speler.rol_display_name != "Weerwolf"],
                                     channel=self.weerwolfen_channel)
             await self.weerwolfen_vote.send_message()
+            self.killed = []
 
-
+        # weerwolfen
         if self.react_channel.name == "weerwolfen" and self.gameloop_currentrol == "weerwolf":
+            self.killed.append(await self.weerwolfen_vote.weerwolf(reaction=reaction))
+            del self.weerwolfen_vote
+            await reaction.message.delete()
 
-            pass
+            # begin met Heks
+            self.gameloop_currentrol = "heks"
+
+
+            if self.levendrankje == True or self.dooddrankje == True:
+                await self.het_plein_channel.send("De heks wordt wakker")
+                if self.levendrankje:
+                    self.heks_leven_vote = Vote(message_text="**Levensdrankje**\n{} is dood wil je hem/haar redden".format(self.killed[0].name),speler_lijst=["Nee","Ja"],channel=self.heks_channel)
+                    await self.heks_leven_vote.send_message()
+                if self.dooddrankje:
+                    heks_lijst = [i for i in self.player_lijst]
+                    heks_lijst.append("**NIEMAND**")
+                    self.heks_dood_vote = Vote(message_text="**Dodendrankje**\nWil je iemand vermoorden",
+                                                speler_lijst=heks_lijst, channel=self.heks_channel)
+                    await self.heks_dood_vote.send_message()
+            else:
+                await self.het_plein_channel.send("De heks kan niks meer doen")
+
+        # Heks
+        if self.react_channel.name == "heks" and self.gameloop_currentrol == "heks":
+            if "Dodendrankje" in reaction.message.content:
+                    gebruikt = self.killed.append(await self.heks_dood_vote.heks_moord(reaction=reaction))
+                    del self.weerwolfen_vote
+                    if gebruikt:
+                        self.dooddrankje = False
+
+
+            if "Levensdrankje" in reaction.message.content:
+                keuze = self.heks_leven_vote.heks_leven(reaction=reaction)
+                del self.heks_leven_vote
+                await reaction.message.delete()
+                if keuze == "Ja":
+                    await reaction.message.channel.send("Je hebt {} weer tot leven gewekt".format(self.killed[0]))
+                    self.killed.remove(self.killed[0])
+                    self.levendrankje = False
+
+                else:
+                    return
+
 
     def get_reaction_amount(self,reaction):
         count = 0
