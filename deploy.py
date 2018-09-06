@@ -85,12 +85,23 @@ class Player():
         self.name = self.member.name
         self.rol = None
         self.rol_display_name = None
-        self.in_love = "alone"
+        self.in_love = False
         self.levend = True
         self.burgermeester = False
 
     def __str__(self):
         return "<naam={}>".format(self.name)
+
+    async def kill(self,dood_role):
+        await self.member.remove_roles(self.rol)
+        await self.member.add_roles(dood_rol)
+        self.levend = False
+        if self.in_love:
+            if self.in_love.levend:
+                self.in_love.kill()
+
+        # remove rols
+        # kill cupido
 
 class Vote():
     emoji_lijst = ["0⃣","1⃣","2⃣","3⃣","4⃣","5⃣","6⃣","7⃣","8⃣","9⃣","🔟","💟","☮","✝","☪","🕉","☸","✡","🕎","☯","☦","🛐","⛎","♈","♉","⚛","♋","♌","♍","♎","♏","♐","🈚","♒","♓","🆔","⚛"]
@@ -361,6 +372,7 @@ class MyClient(discord.Client):
                 # heks stuff
                 self.levendrankje = True
                 self.dooddrankje = True
+                self.dag = 1
 
 
         # Ziener
@@ -385,7 +397,7 @@ class MyClient(discord.Client):
 
             # begin met Heks
             self.gameloop_currentrol = "heks"
-
+            self.heks_response = 0
 
             if self.levendrankje == True or self.dooddrankje == True:
                 await self.het_plein_channel.send("De heks wordt wakker")
@@ -404,13 +416,15 @@ class MyClient(discord.Client):
         # Heks
         if self.react_channel.name == "heks" and self.gameloop_currentrol == "heks":
             if "Dodendrankje" in reaction.message.content:
-                    gebruikt = self.killed.append(await self.heks_dood_vote.heks_moord(reaction=reaction))
-                    del self.weerwolfen_vote
-                    if gebruikt:
-                        self.dooddrankje = False
-
+                self.heks_response += 1
+                gebruikt = self.killed.append(await self.heks_dood_vote.heks_moord(reaction=reaction))
+                del self.weerwolfen_vote
+                await reaction.message.delete()
+                if gebruikt:
+                    self.dooddrankje = False
 
             if "Levensdrankje" in reaction.message.content:
+                self.heks_response += 1
                 keuze = self.heks_leven_vote.heks_leven(reaction=reaction)
                 del self.heks_leven_vote
                 await reaction.message.delete()
@@ -418,10 +432,16 @@ class MyClient(discord.Client):
                     await reaction.message.channel.send("Je hebt {} weer tot leven gewekt".format(self.killed[0]))
                     self.killed.remove(self.killed[0])
                     self.levendrankje = False
-
                 else:
                     return
 
+            if self.heks_response == 2:
+                for speler in self.killed:
+                    speler.die()
+                if self.dag == 1:
+                    self.gameloop_currentrol = "burgermeester"
+                else:
+                    self.gameloop_currentrol = "stemming"
 
     def get_reaction_amount(self,reaction):
         count = 0
