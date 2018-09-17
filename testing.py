@@ -1,5 +1,8 @@
-a = [1,2,3,4,5,6,7,8,9,10]
-for i in a:
-    if i in (2,3):
-        continue
-    print(i)
+from timeit import Timer
+
+def foo2():
+
+
+
+t1 = Timer("""foo2()""", """from __main__ import foo2""")
+print("foo 2:",t1.timeit(1))  # runs foo() 100 times and returns the time taken

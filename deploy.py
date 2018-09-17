@@ -69,18 +69,19 @@ Maak een dictionary met random rol namen
 Geliefde apart
 '''
 
-description = 'Testing...'
+
 
 import discord
 from random import shuffle, choice
 import string
 from json import load
-from io import BytesIO
-from time import sleep
+import re
+
+description = 'Testing...'
 
 class Player():
     # Dit is een player class van iemand die meedoet
-    def __init__(self,member):
+    def __init__(self, member):
         self.member = member
         self.name = self.member.name
         self.rol = None
@@ -90,41 +91,48 @@ class Player():
         self.burgermeester = False
 
     def __str__(self):
-        return "<naam={}>".format(self.name)
+        return self.name
 
-    async def kill(self,dood_role):
+    async def die(self, dood_rol):
         await self.member.remove_roles(self.rol)
         await self.member.add_roles(dood_rol)
         self.levend = False
         if self.in_love:
-            if self.in_love.levend:
-                self.in_love.kill()
+            if self.in_love.levend == True:
+                await self.in_love.die(dood_rol)
 
         # remove rols
         # kill cupido
 
+
 class Vote():
-    emoji_lijst = ["0⃣","1⃣","2⃣","3⃣","4⃣","5⃣","6⃣","7⃣","8⃣","9⃣","🔟","💟","☮","✝","☪","🕉","☸","✡","🕎","☯","☦","🛐","⛎","♈","♉","⚛","♋","♌","♍","♎","♏","♐","🈚","♒","♓","🆔","⚛"]
-    def __init__(self, speler_lijst, message_text, channel,context="spelers"):
+    emoji_lijst = ["0⃣", "1⃣", "2⃣", "3⃣", "4⃣", "5⃣", "6⃣", "7⃣", "8⃣", "9⃣", "🔟", "💟", "☮", "✝", "☪", "🕉", "☸",
+                   "✡", "🕎", "☯", "☦", "🛐", "⛎", "♈", "♉", "⚛", "♋", "♌", "♍", "♎", "♏", "♐", "🈚", "♒", "♓", "🆔",
+                   "⚛"]
+
+    def __init__(self, speler_lijst, message_text, channel, context="spelers"):
         self.message_text = message_text + '\n'
-        self.speler_lijst = speler_lijst # Dit moet eigenlijk data heten
+        self.speler_lijst = speler_lijst  # Dit moet eigenlijk data heten
         self.channel = channel
         self.member_aantal = len(speler_lijst)
-        self.vote = []
+        self.vote = {}
         self.emoji_to_member_dict = {}
         self.member_to_emoji_dict = {}
-        for speler,emoji in zip(self.speler_lijst, Vote.emoji_lijst):
+        for speler, emoji in zip(self.speler_lijst, Vote.emoji_lijst):
             self.member_to_emoji_dict[speler] = emoji
-        for speler,emoji in zip(self.speler_lijst, Vote.emoji_lijst):
+        for speler, emoji in zip(self.speler_lijst, Vote.emoji_lijst):
             self.emoji_to_member_dict[emoji] = speler
 
+
+    def add_vote(self,save,key):
+        self.vote[save] = key
     async def send_message(self):
         # stuur de message
         # add reactions
 
-        for speler,emoji in zip(self.speler_lijst, Vote.emoji_lijst):
-            if isinstance(speler,Player):
-                self.message_text += "{}    -   {}\n".format(emoji,speler.name)
+        for speler, emoji in zip(self.speler_lijst, Vote.emoji_lijst):
+            if isinstance(speler, Player):
+                self.message_text += "{}    -   {}\n".format(emoji, speler.name)
             else:
                 self.message_text += "{}    -   {}\n".format(emoji, speler)
         self.message = await self.channel.send(self.message_text)
@@ -132,33 +140,41 @@ class Vote():
         for speler in self.speler_lijst:
             await self.message.add_reaction(self.member_to_emoji_dict[speler])
 
-    async def cupido(self,channel):
-        geliefden = [self.emoji_to_member_dict[i.emoji] for i in self.vote]
+    async def cupido(self, channel):
+        geliefden = [self.emoji_to_member_dict[i.emoji] for i in self.vote] # maak tuple van dict
         await channel.set_permissions(target=geliefden[0].member, read_messages=True, send_messages=True)
         await channel.set_permissions(target=geliefden[1].member, read_messages=True, send_messages=True)
 
-        geliefden[0].in_love = geliefden[1] # zet elkaar in elkaars player class
-        geliefden[1].in_love = geliefden[0] # zet elkaar in elkaars players class
-        await self.channel.send("{} en {} zijn intens verlieft op elkaar geworden".format(geliefden[0].name, geliefden[1].name))
+        geliefden[0].in_love = geliefden[1]  # zet elkaar in elkaars player class
+        geliefden[1].in_love = geliefden[0]  # zet elkaar in elkaars players class
+        await self.channel.send(
+            "{} en {} zijn intens verlieft op elkaar geworden".format(geliefden[0].name, geliefden[1].name))
         return
 
-    async def ziener(self,reaction):
+    async def ziener(self, reaction):
         target = self.emoji_to_member_dict[reaction.emoji]
-        await reaction.message.channel.send("{} is {}".format(target.name,target.rol_display_name))
+        await reaction.message.channel.send("{} is {}".format(target.name, target.rol_display_name))
         return
 
-    async def weerwolf(self,reaction):
+    # dit zou in 1 kunnen
+    async def weerwolf(self, reaction):
         target = self.emoji_to_member_dict[reaction.emoji]
         await reaction.message.channel.send("{} is opgegeten".format(target.name))
         return target
 
-    async def heks_moord(self,reaction):
+    async def jager(self, reaction):
         target = self.emoji_to_member_dict[reaction.emoji]
-        await reaction.message.channel.send("Je hebt {} vergiftigt".format(target.name))
+        await reaction.message.channel.send("{} is doodgeschoten".format(target.name))
         return target
 
-    def heks_leven(self,reaction):
+    async def heks_moord(self, reaction):
+        target = self.emoji_to_member_dict[reaction.emoji]
+        await reaction.message.channel.send("Je hebt {} vergiftigt".format(str(target)))
+        return target
+
+    def heks_leven(self, reaction):
         return self.emoji_to_member_dict[reaction.emoji]
+
 
 class MyClient(discord.Client):
     # Dit is de custom bot class van de rewrite
@@ -169,58 +185,64 @@ class MyClient(discord.Client):
         print('----------------')
         print(self.guilds)
         self.init = False
-
+        self.gameloop_currentrol = None
 
     async def on_message(self, message):
         # dit triggert als er een message komt
-        self.server = message.guild         # van welke server kwam de message
-        self.bericht_text = message.content.split()     # split de bericht text
+        self.server = message.guild  # van welke server kwam de message
+        self.bericht_text = message.content.split()  # split de bericht text
 
-        if message.author != client.user:                   # check of auteur niet bot is zodat je niet dood gespamt wordt
+        if message.author != client.user:  # check of auteur niet bot is zodat je niet dood gespamt wordt
             self.bericht_text = message.content.split()
 
-            #Add text channels
+            # Add text channels
             if self.bericht_text[0] == "!init":
                 # if self.init == True:
                 #     return
                 # self.init = True
+                self.weerwolfen_spel_rol = await self.server.create_role(name="spel Weerwolfen", mentionable=True)
                 self.weerwolfen_category = await self.server.create_category("Weerwolfen")
 
-                self.het_plein_channel = await self.server.create_text_channel("Het plein",category=self.weerwolfen_category)
-                self.cupido_channel = await self.server.create_text_channel("Cupido",category=self.weerwolfen_category)
-                self.ziener_channel = await self.server.create_text_channel("Ziener",category=self.weerwolfen_category)
-                self.weerwolfen_channel = await self.server.create_text_channel("Weerwolfen",category=self.weerwolfen_category)
-                self.heks_channel = await self.server.create_text_channel("Heks",category=self.weerwolfen_category)
-                self.geliefde_channel = await self.server.create_text_channel("Geliefde chat",category=self.weerwolfen_category)
-                self.jager_channel = await self.server.create_text_channel("Jager",category=self.weerwolfen_category)
-                #voice
-                self.dag_channel = await self.server.create_voice_channel("🌞 Dag",category=self.weerwolfen_category)
-                self.nacht_channel = await self.server.create_voice_channel("🌙 Nacht",category=self.weerwolfen_category)
+                self.het_plein_channel = await self.server.create_text_channel("Het plein",
+                                                                               category=self.weerwolfen_category)
+                self.cupido_channel = await self.server.create_text_channel("Cupido", category=self.weerwolfen_category)
+                self.ziener_channel = await self.server.create_text_channel("Ziener", category=self.weerwolfen_category)
+                self.weerwolfen_channel = await self.server.create_text_channel("Weerwolfen",
+                                                                                category=self.weerwolfen_category)
+                self.heks_channel = await self.server.create_text_channel("Heks", category=self.weerwolfen_category)
+                self.geliefde_channel = await self.server.create_text_channel("Geliefde chat",
+                                                                              category=self.weerwolfen_category)
+                self.jager_channel = await self.server.create_text_channel("Jager", category=self.weerwolfen_category)
+                # voice
+                self.dag_channel = await self.server.create_voice_channel("🌞 Dag", category=self.weerwolfen_category)
+                self.nacht_channel = await self.server.create_voice_channel("🌙 Nacht",
+                                                                            category=self.weerwolfen_category)
 
-                self.channel_dict = {"Het plein:":self.het_plein_channel,
-                                     "Cupido":self.cupido_channel,
-                                     "Ziener":self.ziener_channel,
-                                     "Weerwolf":self.weerwolfen_channel,
-                                     "Heks":self.heks_channel,
-                                     "Geliefde":self.geliefde_channel,
-                                     "Jager":self.jager_channel,
-                                     "Dag":self.dag_channel,
-                                     "Nacht":self.nacht_channel}
+                self.channel_dict = {"Het plein:": self.het_plein_channel,
+                                     "Cupido": self.cupido_channel,
+                                     "Ziener": self.ziener_channel,
+                                     "Weerwolf": self.weerwolfen_channel,
+                                     "Heks": self.heks_channel,
+                                     "Geliefde": self.geliefde_channel,
+                                     "Jager": self.jager_channel,
+                                     "Dag": self.dag_channel,
+                                     "Nacht": self.nacht_channel}
 
-                self.weerwolfen_spel_rol = await self.server.create_role(name="spel Weerwolfen",mentionable=True)
+
+                self.dood_rol = await self.server.create_role(name="Dood", mentionable=True)
 
                 # set permissions op de channels
                 for i in self.weerwolfen_category.channels:
                     await i.set_permissions(target=self.server.default_role, read_messages=False)
-                await self.het_plein_channel.set_permissions(target=self.weerwolfen_spel_rol,send_messages=True,read_messages=True)
-                await self.dag_channel.set_permissions(target=self.weerwolfen_spel_rol,connect=False, speak=True, use_voice_activation=True,read_messages=True)
-
+                await self.het_plein_channel.set_permissions(target=self.weerwolfen_spel_rol, send_messages=True,
+                                                             read_messages=True)
+                await self.dag_channel.set_permissions(target=self.weerwolfen_spel_rol, connect=False, speak=True,
+                                                       use_voice_activation=True, read_messages=True)
 
             # Start commando
             print(message.content)
             if self.bericht_text[0] == "!start":
                 self.player_lijst = []
-
 
                 for member in self.weerwolfen_spel_rol.members:
                     self.player_lijst.append(Player(member))
@@ -232,29 +254,35 @@ class MyClient(discord.Client):
 
                 self.rollen_lijst = await self.get_game_rollen(self.player_hoeveelheid)
                 if len(self.rollen_lijst) == self.player_hoeveelheid:
-                    for speler, rol in zip(self.player_lijst,self.rollen_lijst):
-                        speler.rol = rol                                            # Doe rol object in de player class
-                        await speler.member.add_roles(rol)                          # Voeg rol toe aan member
-                        speler.rol_display_name = rol.name                          # Voeg display name toe aan member
-                        await rol.edit(name=id_generator())                         # Verander rol naam in random string
+                    for speler, rol in zip(self.player_lijst, self.rollen_lijst):
+                        speler.rol = rol  # Doe rol object in de player class
+                        await speler.member.add_roles(rol)  # Voeg rol toe aan member
+                        speler.rol_display_name = rol.name  # Voeg display name toe aan member
+                        await rol.edit(name=id_generator())  # Verander rol naam in random string
                         # await message.channel.send(str(speler))
 
-                        if not speler.member.bot:                                   # Als speler niet bot stuur dan bericht met info
-                            await speler.member.send(delete_after=30,embed=discord.Embed(description="You are {}".format(speler.rol_display_name),colour=discord.Colour(value=1412412)))
+                        if not speler.member.bot and self.bericht_text[1] != "no":  # Als speler niet bot stuur dan bericht met info
+                            await speler.member.send(delete_after=30, embed=discord.Embed(
+                                description="You are {}".format(speler.rol_display_name),
+                                colour=discord.Colour(value=1412412)))
 
                     for i in self.player_lijst:
                         if i.rol_display_name == "Burger":
                             continue
-                        await self.channel_dict[i.rol_display_name].set_permissions(target=i.rol,read_messages=True,send_messages=True)
+                        await self.channel_dict[i.rol_display_name].set_permissions(target=i.rol, read_messages=True,
+                                                                                    send_messages=True)
                         if i.rol_display_name == "Weerwolf":
-                            print("yyoy weerwolfen voice permiisons")
-                            await self.nacht_channel.set_permissions(target=i.rol,read_messages=True,connect=True,speak=True,use_voice_activation=True)
+                            await self.nacht_channel.set_permissions(target=i.rol, read_messages=True, connect=True,
+                                                                     speak=True, use_voice_activation=True)
+
 
                     # Eerste nacht
-                    await self.het_plein_channel.send("Het is nacht cupido wordt wakker en wijst 2 geliefde aan")
-                    self.cupido_vote = Vote(message_text="Cupido wijst 2 gelefde aan",speler_lijst=self.player_lijst,channel=self.cupido_channel)
-                    await self.cupido_vote.send_message()
                     self.gameloop_currentrol = "cupido"
+                    await self.het_plein_channel.send("Het is nacht cupido wordt wakker en wijst 2 geliefde aan")
+                    self.cupido_vote = Vote(message_text="Cupido wijst 2 gelefde aan", speler_lijst=self.player_lijst,
+                                            channel=self.cupido_channel)
+                    await self.cupido_vote.send_message()
+
                 return
 
             # !Clean
@@ -262,7 +290,7 @@ class MyClient(discord.Client):
                 cool = []
                 for i in self.server.roles:
                     if i.name != "spel Weerwolfen":
-                        if i.name in ("Jager","Weerwolf","Cupido","Ziener","Heks","Burger") or i.name[:4] == "spel":
+                        if i.name in ("Jager", "Weerwolf", "Cupido", "Ziener", "Heks", "Burger") or i.name[:4] == "spel":
                             cool.append(i)
 
                 for i in cool:
@@ -270,13 +298,69 @@ class MyClient(discord.Client):
 
                 return
 
+            #!vote
+
+            if self.bericht_text[0] == "!stem" and message.channel.name == "het-plein" and self.gameloop_currentrol == "burgermeester":
+                if len(self.bericht_text) == 1:
+                    await message.delete()
+                stem_id = self.bericht_text[1][2:len(self.bericht_text[1])-1] # Pak bericht text en haal buitenkant eraf maak er een nummer van
+                if stem_id.isdigit():
+                    stem_id = int(stem_id)
+                else:
+                    await message.delete()
+                    return
+                stem = self.server.get_member(stem_id)
+                if not isinstance(stem,discord.Member):
+                    return
+                if self.dood_rol in stem.roles:
+                    await message.delete()
+                    return
+                self.stemming[message.author] = self.bericht_text[1] # Zet autor in de dict
+                stemming_resultaat = {}
+                for i in list(self.stemming.items()):                   # zet alle votes in de nieuwe dict tot 1
+                    stemming_resultaat[i[1]] = 0
+                for i in list(self.stemming.items()):                   # plus 1 voor elke keer dat vote voorkomt
+                    stemming_resultaat[i[1]] += 1
+                output = []
+                for i in list(stemming_resultaat.items()):
+                    if i[1] == 1:
+                        output.append("{} stem voor {} ".format(i[1], i[0]))
+                    else:
+                        output.append("{} stemmen voor {} ".format(i[1], i[0]))
+                    output.sort()
+                await self.stemming_bericht.edit(
+                    content="@here\nStemming:\n{}".format("\n".join(output)))
+                if len(self.stemming) == 2: #self.players_levend:
+                    hoogste = 0
+                    for i in list(stemming_resultaat.items()):
+                        if i[1] > hoogste:
+                            hoogste = i                 #evalutionaire algoritme??
+                    if list(stemming_resultaat.values()).count(hoogste[1]) > 1: # als stemming meer and 1 keer voor komt
+                        await self.stemming_bericht.edit(
+                            content="@here\nStemming:\n{}\n\nHet staat momenteel gelijk".format("\n".join(output)))
+                        return
+                    else:
+                        await self.stemming_bericht.delete()
+                        await message.channel.send(embed=discord.Embed(description="{} heeft gewonnen en is burgermeester".format(hoogste[0],colour=discord.Colour(value=2195054))))
+
+                        winning_player = next((player for player in self.players_levend_list if player.name == hoogste[0]))
+                        winning_player.burgermeester = True
+                        self.current_rol = "burger"
+
+                        # nu moet de hele vote nog een keer voor wie er dood moet je boy
+
+            if self.gameloop_currentrol == "burgermeester":
+                await message.delete()
+
+
+
+
             # !join all
             if self.bericht_text[0] == "!join" and self.bericht_text[1] == "all":
                 for i in self.server.members:
                     await i.add_roles(self.weerwolfen_spel_rol)
-                await message.channel.send("Done",delete_after=2)
+                await message.channel.send("Done", delete_after=2)
                 return
-
 
             # exit remove text channels
             if self.bericht_text[0] == "!exit":
@@ -294,7 +378,7 @@ class MyClient(discord.Client):
 
                 delete_list = []
                 for i in self.server.roles:
-                    if i.name[:4] == "spel":
+                    if i.name[:4] == "spel" or i.name == "Dood":
                         delete_list.append(i)
 
                 for i in delete_list:  # anders lukt het niet goed
@@ -307,15 +391,16 @@ class MyClient(discord.Client):
                     if len(self.bericht_text) == 1 or self.bericht_text[1] == 1:
                         hoeveel_messages = 2
                     else:
-                        hoeveel_messages = int(self.bericht_text[1])+1
+                        hoeveel_messages = int(self.bericht_text[1]) + 1
 
                     await message.channel.purge(limit=hoeveel_messages)
                 except ValueError:
-                    await message.channel.send("Geen getal gegeven",delete_after=7)
+                    await message.channel.send("Geen getal gegeven", delete_after=7)
                 return
+            if self.bericht_text[0] == "!tes":
+                pass
 
-
-    async def get_game_rollen(self,player_hoeveelheid):
+    async def get_game_rollen(self, player_hoeveelheid):
         rollen_lijst = [await self.server.create_role(name="Cupido"),
                         await self.server.create_role(name="Ziener"),
                         await self.server.create_role(name="Weerwolf"),
@@ -342,37 +427,37 @@ class MyClient(discord.Client):
         return rollen_lijst
 
 
-    async def on_reaction_add(self,reaction, user):
+    async def on_reaction_add(self, reaction, user):
 
         if user == client.user:
             return
-
-        # kijk in welk channel de reaction is
-        # doe de logica voor dat channel en ga naar de volgende
 
         self.react_channel = reaction.message.channel
 
         # cupido
         if self.react_channel.name == "cupido" and self.gameloop_currentrol == "cupido":
 
-            self.cupido_vote.vote.append(reaction)
-            if self.get_reaction_amount(reaction) == 2:          # look for 2 reactions and they should have a count of 2
+            self.cupido_vote.vote[reaction] = 1
+            if len(self.cupido_vote.vote) == 2:  # look for 2 reactions and they should have a count of 2
                 await self.cupido_vote.cupido(channel=self.geliefde_channel)
                 del self.cupido_vote
+
+                # heks stuff
+                self.levendrankje = True
+                self.dooddrankje = True
+                self.dag = 1
 
                 await reaction.message.delete()
 
                 # we gaan nu naar ziener
+
+
                 self.gameloop_currentrol = "ziener"
                 await self.het_plein_channel.send("De ziener wordt wakker en bekijkt iemands persoonlijkheid")
                 self.ziener_vote = Vote(message_text="Wie wil de ziener bekijken", speler_lijst=self.player_lijst,
                                         channel=self.ziener_channel)
                 await self.ziener_vote.send_message()
 
-                # heks stuff
-                self.levendrankje = True
-                self.dooddrankje = True
-                self.dag = 1
 
 
         # Ziener
@@ -384,8 +469,10 @@ class MyClient(discord.Client):
             # we gaan nu over naar weerwolfen
             self.gameloop_currentrol = "weerwolf"
             await self.het_plein_channel.send("De weerwolfen worden wakker opzoek naar een midnight snack")
-            self.weerwolfen_vote = Vote(message_text="Wie gaan julie opeten", speler_lijst=[speler for speler in self.player_lijst if speler.rol_display_name != "Weerwolf"],
-                                    channel=self.weerwolfen_channel)
+            self.weerwolfen_vote = Vote(message_text="Wie gaan julie opeten",
+                                        speler_lijst=[speler for speler in self.player_lijst if
+                                                      speler.rol_display_name != "Weerwolf"],
+                                        channel=self.weerwolfen_channel)
             await self.weerwolfen_vote.send_message()
             self.killed = []
 
@@ -402,13 +489,15 @@ class MyClient(discord.Client):
             if self.levendrankje == True or self.dooddrankje == True:
                 await self.het_plein_channel.send("De heks wordt wakker")
                 if self.levendrankje:
-                    self.heks_leven_vote = Vote(message_text="**Levensdrankje**\n{} is dood wil je hem/haar redden".format(self.killed[0].name),speler_lijst=["Nee","Ja"],channel=self.heks_channel)
+                    self.heks_leven_vote = Vote(
+                        message_text="**Levensdrankje**\n{} is dood wil je hem/haar redden".format(self.killed[0].name),
+                        speler_lijst=["Nee", "Ja"], channel=self.heks_channel)
                     await self.heks_leven_vote.send_message()
                 if self.dooddrankje:
                     heks_lijst = [i for i in self.player_lijst]
                     heks_lijst.append("**NIEMAND**")
                     self.heks_dood_vote = Vote(message_text="**Dodendrankje**\nWil je iemand vermoorden",
-                                                speler_lijst=heks_lijst, channel=self.heks_channel)
+                                               speler_lijst=heks_lijst, channel=self.heks_channel)
                     await self.heks_dood_vote.send_message()
             else:
                 await self.het_plein_channel.send("De heks kan niks meer doen")
@@ -418,7 +507,7 @@ class MyClient(discord.Client):
             if "Dodendrankje" in reaction.message.content:
                 self.heks_response += 1
                 gebruikt = self.killed.append(await self.heks_dood_vote.heks_moord(reaction=reaction))
-                del self.weerwolfen_vote
+                del self.heks_dood_vote
                 await reaction.message.delete()
                 if gebruikt:
                     self.dooddrankje = False
@@ -429,34 +518,98 @@ class MyClient(discord.Client):
                 del self.heks_leven_vote
                 await reaction.message.delete()
                 if keuze == "Ja":
-                    await reaction.message.channel.send("Je hebt {} weer tot leven gewekt".format(self.killed[0]))
+                    await reaction.message.channel.send("Je hebt {} weer tot leven gewekt".format(self.killed[0].name))
                     self.killed.remove(self.killed[0])
                     self.levendrankje = False
                 else:
                     return
 
             if self.heks_response == 2:
-                for speler in self.killed:
-                    speler.die()
-                if self.dag == 1:
-                    self.gameloop_currentrol = "burgermeester"
+                # Ga naar dag
+                print(self.killed)
+                try:
+                    self.killed.remove("**NIEMAND**")
+                except:
+                    pass
+                if len(self.killed) > 0:
+                    await reaction.message.channel.send(
+                    "{} zijn gestorven deze nacht".format(" en ".join([str(speler.name) for speler in self.killed])))
+                jager = [speler for speler in self.killed if speler.rol_display_name == "Jager"]
+                if len(jager) == 1:
+                    jager = jager[0]
+                    self.gameloop_currentrol = "jager"
+                    await self.het_plein_channel.send("{} is de jager hij kiest nu wie hij wil vermoorden".format(jager.name))
+                    self.jager_vote = Vote(message_text="Wie wil je doodschieten",
+                                           speler_lijst=[i for i in self.player_lijst if i not in self.killed],
+                                           channel=self.jager_channel)
+                    await self.jager_vote.send_message()
                 else:
-                    self.gameloop_currentrol = "stemming"
+                    await self.switch_to_day()
 
-    def get_reaction_amount(self,reaction):
+        if self.react_channel.name == "jager" and self.gameloop_currentrol == "jager":
+            self.killed.append(await self.jager_vote.jager(reaction=reaction))
+            del self.jager_vote
+            await reaction.message.delete()
+
+            await self.switch_to_day()
+
+
+    async def switch_to_day(self):
+        if len(self.killed):
+            for speler in self.killed:
+                await speler.die(self.dood_rol)
+            self.players_levend = len([speler for speler in self.player_lijst if speler.levend])
+            self.players_levend_list =[speler.member for speler in self.player_lijst if speler.levend]
+        if len(self.killed) > 1:
+            await self.het_plein_channel.send("{} hebben de nacht niet overleeft".format(" en ".join([str(speler.name) for speler in self.killed])))
+        elif len(self.killed) == 1:
+            await self.het_plein_channel.send(
+                "{} heeft de nacht niet overleeft".format(" en ".join([str(speler.name) for speler in self.killed])))
+        else:
+            await self.het_plein_channel.send("Iedereen heeft de nacht overleeft")
+        for speler in self.killed:
+            await self.het_plein_channel.send(embed=discord.Embed(description="{} was {}".format(speler.name,speler.rol_display_name),
+                                colour=discord.Colour(value=2195054)))
+        self.stemming = {}
+        if self.dag == 1:
+            self.gameloop_currentrol = "burgermeester"
+            await self.het_plein_channel.send("Nu gaan we stemmen op wie burgermeester moet worden",embed=discord.Embed(
+                                description="Stem met !stem @naam",
+                                colour=discord.Colour(value=1412412)))
+            self.stemming_bericht = await self.het_plein_channel.send("@here\nStemming:")
+        else:
+            self.gameloop_currentrol = "stemming"
+            await self.het_plein_channel.send("Stem op wie moet worden vermoord\n!stem @Persoon")
+
+    def get_reaction_amount(self, reaction):
         count = 0
-        emoji_count = len(reaction.message.reactions)       # Hoeveel emoji's zijn er
-        for emoji in reaction.message.reactions:            # ga door alle reacties heen
+        emoji_count = len(reaction.message.reactions)  # Hoeveel emoji's zijn er
+        for emoji in reaction.message.reactions:  # ga door alle reacties heen
             count += emoji.count
-        count -= emoji_count                                # hier hou je alleen de exstra reacties over
+        count -= emoji_count  # hier hou je alleen de exstra reacties over
         return count
 
-def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
-    return "spel"+''.join(choice(chars) for _ in range(size))
 
+
+def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
+    return "spel" + ''.join(choice(chars) for _ in range(size))
 
 
 client = MyClient()
 
 client.run(load(open("config.json", "r"))["key"])
 
+# to do
+
+'''
+Maak Vote class beter door berichten buiten de functie te sturen zodat veel methods naar 1 methode kunnen
+
+Stuur een embed message en edit het elke keer
+Fix de rechten van doden
+Skip een rol als dood
+Heks is soms een no show (mischien achter elkaar doen zodat er minder stress is)
+gelievde wordt niet weergegeven als die vermoord is 
+Maak dingen eventuweel een set
+Zorg en zeg dat je niet op jezelf kan stemmen
+verander alle listcomprehensions naar generators want holy fuck ze zijn echt zo veel sneller
+'''
