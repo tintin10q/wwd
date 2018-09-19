@@ -97,9 +97,6 @@ class Player():
         await self.member.remove_roles(self.rol)
         await self.member.add_roles(dood_rol)
         self.levend = False
-        if self.in_love:
-            if self.in_love.levend == True:
-                await self.in_love.die(dood_rol)
 
         # remove rols
         # kill cupido
@@ -110,7 +107,8 @@ class Vote():
                    "✡", "🕎", "☯", "☦", "🛐", "⛎", "♈", "♉", "⚛", "♋", "♌", "♍", "♎", "♏", "♐", "🈚", "♒", "♓", "🆔",
                    "⚛"]
 
-    def __init__(self, speler_lijst, message_text, channel, context="spelers"):
+    def __init__(self, speler_lijst, message_text, channel, action_message="None"):
+        self.action_message = action_message
         self.message_text = message_text + '\n'
         self.speler_lijst = speler_lijst  # Dit moet eigenlijk data heten
         self.channel = channel
@@ -154,22 +152,16 @@ class Vote():
     async def ziener(self, reaction):
         target = self.emoji_to_member_dict[reaction.emoji]
         await reaction.message.channel.send("{} is {}".format(target.name, target.rol_display_name))
-        return
+        return target
 
     # dit zou in 1 kunnen
-    async def weerwolf(self, reaction):
+    async def normal_action(self, reaction):
         target = self.emoji_to_member_dict[reaction.emoji]
-        await reaction.message.channel.send("{} is opgegeten".format(target.name))
-        return target
-
-    async def jager(self, reaction):
-        target = self.emoji_to_member_dict[reaction.emoji]
-        await reaction.message.channel.send("{} is doodgeschoten".format(target.name))
-        return target
-
-    async def heks_moord(self, reaction):
-        target = self.emoji_to_member_dict[reaction.emoji]
-        await reaction.message.channel.send("Je hebt {} vergiftigt".format(str(target)))
+        if isinstance(target,Player):
+            await reaction.message.channel.send(self.action_message.format(target.name))
+        # goed we gaan er van uit dat als de target geen Player is dat is het het string momenteel is er een manier hoe er een string target zou kunnen komen en dat is de heks als er meer strings komen wat ik betwijfel kan je altijd meer dingen toevoegen
+        else:
+            await reaction.message.channel.send(self.action_message.format(target))
         return target
 
     def heks_leven(self, reaction):
@@ -203,6 +195,7 @@ class MyClient(discord.Client):
 
             # Add text channels
             if self.bericht_text[0] == "!init":
+                self.join_message = False
                 # if self.init == True:
                 #     return
                 # self.init = True
@@ -253,7 +246,7 @@ class MyClient(discord.Client):
                 for member in self.weerwolfen_spel_rol.members:
                     self.player_lijst.append(Player(member))
                 shuffle(self.player_lijst)
-                self.players_levend_list = [i for i in self.player_lijst]
+                self.players_levend_list = [i for i in self.player_lijst if i.levend]
                 self.player_hoeveelheid = len(self.player_lijst)
                 if self.player_hoeveelheid < 6:
                     await message.channel.send("Te weinig spelers doen mee.\nGeef meer leden de Weerwolf spel rol")
@@ -285,6 +278,13 @@ class MyClient(discord.Client):
 
                     # Eerste nacht
                     self.gameloop_currentrol = "cupido"
+
+                    # heks stuff
+                    self.levendrankje = True
+                    self.dooddrankje = True
+
+                    self.dag = 1
+
                     await self.het_plein_channel.send("Het is nacht cupido wordt wakker en wijst 2 geliefde aan")
                     self.cupido_vote = Vote(message_text="Cupido wijst 2 gelefde aan", speler_lijst=self.player_lijst,
                                             channel=self.cupido_channel)
@@ -294,16 +294,8 @@ class MyClient(discord.Client):
 
             # !Clean
             if self.bericht_text[0] == "!clean":
-                cool = []
-                for i in self.server.roles:
-                    if i.name != "spel Weerwolfen":
-                        if i.name in ("Jager", "Weerwolf", "Cupido", "Ziener", "Heks", "Burger") or i.name[:4] == "spel":
-                            cool.append(i)
+                await self.clean()
 
-                for i in cool:
-                    await i.delete()
-
-                return
 
             #!vote
 
@@ -311,7 +303,12 @@ class MyClient(discord.Client):
                 if len(self.bericht_text) == 1:
                     await message.delete()
                     return
+
                 stem = self.return_member(mention=self.bericht_text[1])
+                if message.author == stem:
+                    await message.delete()
+                    await self.het_plein_channel.send("{} Je kan niet op jezelf stemmen".formate(message.author.mention),delete_after=4)
+                    return
                 if not isinstance(stem,discord.Member):
                     await message.delete()
                     return
@@ -342,7 +339,7 @@ class MyClient(discord.Client):
                     if list(stemming_resultaat.values()).count(hoogste[1]) > 1: # als stemming meer and 1 keer voor komt
                         await self.stemming_bericht.edit(
                             content="@here nu gaan we stemmen op wie burgermeester moet worden\n\nStemming:\n{}\n\nHet staat momenteel gelijk".format("\n".join(output)))
-                        # await message.delete()
+                        await message.delete()
                         return
                     else:
                         winning_player = next((player for player in self.player_lijst if player.name == self.return_member(mention=hoogste[0]).name))
@@ -350,6 +347,7 @@ class MyClient(discord.Client):
                         self.burgermeester = winning_player.member
                         self.stemming = {}
                         self.gameloop_currentrol = "stemming"
+                        await message.delete()
                         await self.stemming_bericht.delete()
                         await self.het_plein_channel.send(embed=discord.Embed(description="{} heeft gewonnen en is burgermeester".format(hoogste[0],colour=discord.Colour(value=2195054))))
                         self.stemming_bericht = await self.het_plein_channel.send("@here We gaan nu stemmen op de persoon die wordt vermoord\n\nStemming:")
@@ -362,6 +360,10 @@ class MyClient(discord.Client):
                     await message.delete()
                     return
                 stem = self.return_member(mention=self.bericht_text[1])
+                if message.author == stem:
+                    await message.delete()
+                    await self.het_plein_channel.send("{} Je kan niet op jezelf stemmen".format(message.author.mention),delete_after=4)
+                    return
                 if not isinstance(stem,discord.Member):
                     await message.delete()
                     return
@@ -387,7 +389,7 @@ class MyClient(discord.Client):
                     output.sort()
                 await self.stemming_bericht.edit(
                     content="@here We gaan nu stemmen op de persoon die wordt vermoord\n\nStemming:\n{}".format("\n".join(output)))
-                if len(self.stemming) == 2: #self.players_levend:
+                if len(self.stemming) == 2: # Er is dus evenveel stemmen als de win condition
                     hoogste = (None,0)
                     for i in list(stemming_resultaat.items()):
                         if i[1] > hoogste[1]:
@@ -395,14 +397,22 @@ class MyClient(discord.Client):
                     if list(stemming_resultaat.values()).count(hoogste[1]) > 1: # als stemming meer and 1 keer voor komt
                         await self.stemming_bericht.edit(
                             content="@here We gaan nu stemmen op de persoon die wordt vermoord\n\nStemming:\n{}\n\nHet staat momenteel gelijk".format("\n".join(output)))
+                        await message.delete()
                         return
-                    else:
+                    else: # de stemming is goed gegaan dan gaat dit:
+                        if await self.win_check():
+                            return
+                        await message.delete()
                         await self.stemming_bericht.delete()
-                        await self.het_plein_channel.send(embed=discord.Embed(description="{} is gekozen en wordt vermoord".format(hoogste[0],colour=discord.Colour(value=2195054))))
                         winning_player = next((player for player in self.player_lijst if player.name == self.return_member(mention=hoogste[0]).name))
+                        await self.het_plein_channel.send(embed=discord.Embed(
+                            description="{} is gekozen en wordt vermoord\n{} was {}".format(hoogste[0],hoogste[0],winning_player.rol_display_name),
+                                                                                 colour=discord.Colour(value=2195054)))
                         await winning_player.die(self.dood_rol)
+                        self.players_levend_list = [i for i in self.player_lijst if i.levend]
+                        self.players_levend_list_member = [i.member for i in self.player_lijst if i.levend]
                         if self.ziener_levend == True:
-                            self.current_rol = "ziener"
+                            self.gameloop_currentrol = "ziener"
                             await self.het_plein_channel.send(
                                 "De ziener wordt wakker en bekijkt iemands persoonlijkheid")
                             self.ziener_vote = Vote(message_text="Wie wil de ziener bekijken",
@@ -410,7 +420,7 @@ class MyClient(discord.Client):
                                                     channel=self.ziener_channel)
                             await self.ziener_vote.send_message()
                         else:
-                            self.current_rol = "weerwolfen"
+                            self.gameloop_currentrol = "weerwolfen"
                             await self.het_plein_channel.send(
                                 "De weerwolfen worden wakker opzoek naar een midnight snack")
                             self.weerwolfen_vote = Vote(message_text="Wie gaan julie opeten",
@@ -424,6 +434,12 @@ class MyClient(discord.Client):
 
 
             # !join all
+            if self.bericht_text[0] == "!join" and len(self.bericht_text) == 1:
+                if self.join_message:
+                    await self.join_message.delete()
+                self.join_message = await message.channel.send("**Join weerwolfen** {} \n{} wil een weerwolfen potje beginnen, click op de emoji om mee te doen".format(self.weerwolfen_spel_rol.mention,message.author.mention))
+                await self.join_message.add_reaction("🐺")
+
             if self.bericht_text[0] == "!join" and self.bericht_text[1] == "all":
                 for i in self.server.members:
                     await i.add_roles(self.weerwolfen_spel_rol)
@@ -468,6 +484,14 @@ class MyClient(discord.Client):
             if self.bericht_text[0] == "!tes":
                 pass
 
+    async def on_reaction_remove(self,reaction,user):
+        if user == client.user:
+            return
+        if reaction.emoji == "🐺":
+            self.react_channel = reaction.message.channel
+
+            if reaction.message.content[:19] == "**Join weerwolfen**" and reaction.emoji == "🐺" and reaction.message.author.bot:
+                await user.remove_roles(self.weerwolfen_spel_rol)
 
     async def on_reaction_add(self, reaction, user):
 
@@ -475,6 +499,9 @@ class MyClient(discord.Client):
             return
 
         self.react_channel = reaction.message.channel
+
+        if reaction.message.content[:19] == "**Join weerwolfen**"and reaction.emoji == "🐺" and reaction.message.author.bot:
+            await user.add_roles(self.weerwolfen_spel_rol)
 
         # cupido
         if self.react_channel.name == "cupido" and self.gameloop_currentrol == "cupido":
@@ -484,10 +511,7 @@ class MyClient(discord.Client):
                 await self.cupido_vote.cupido(channel=self.geliefde_channel)
                 del self.cupido_vote
 
-                # heks stuff
-                self.levendrankje = True
-                self.dooddrankje = True
-                self.dag = 1
+
 
                 await reaction.message.delete()
 
@@ -504,6 +528,7 @@ class MyClient(discord.Client):
 
         # Ziener
         if self.react_channel.name == "ziener" and self.gameloop_currentrol == "ziener":
+            print("go go go")
             await self.ziener_vote.ziener(reaction=reaction)
             del self.ziener_vote
             await reaction.message.delete()
@@ -513,14 +538,14 @@ class MyClient(discord.Client):
             await self.het_plein_channel.send("De weerwolfen worden wakker opzoek naar een midnight snack")
             self.weerwolfen_vote = Vote(message_text="Wie gaan julie opeten",
                                         speler_lijst=[speler for speler in self.players_levend_list if
-                                                      speler.rol_display_name != "Weerwolf"],
-                                        channel=self.weerwolfen_channel)
+                                                      speler.rol_display_name != "Weerwolf" and speler.levend == True],
+                                        channel=self.weerwolfen_channel,action_message="{} is opgegeten")
             await self.weerwolfen_vote.send_message()
             self.killed = []
 
         # weerwolfen
         if self.react_channel.name == "weerwolfen" and self.gameloop_currentrol == "weerwolf":
-            self.killed.append(await self.weerwolfen_vote.weerwolf(reaction=reaction))
+            self.killed.append(await self.weerwolfen_vote.normal_action(reaction=reaction))
             del self.weerwolfen_vote
             await reaction.message.delete()
 
@@ -533,14 +558,18 @@ class MyClient(discord.Client):
                 if self.levendrankje:
                     self.heks_leven_vote = Vote(
                         message_text="**Levensdrankje**\n{} is dood wil je hem/haar redden".format(self.killed[0].name),
-                        speler_lijst=["Nee", "Ja"], channel=self.heks_channel)
+                        speler_lijst=("Nee", "Ja"), channel=self.heks_channel)
                     await self.heks_leven_vote.send_message()
+                else:
+                    self.heks_response += 1
                 if self.dooddrankje:
                     heks_lijst = [i for i in self.players_levend_list]
                     heks_lijst.append("**NIEMAND**")
                     self.heks_dood_vote = Vote(message_text="**Dodendrankje**\nWil je iemand vermoorden",
-                                               speler_lijst=heks_lijst, channel=self.heks_channel)
+                                               speler_lijst=heks_lijst, channel=self.heks_channel,action_message="Je hebt {} vergiftigt")
                     await self.heks_dood_vote.send_message()
+                else:
+                    self.heks_response += 1
             else:
                 await self.het_plein_channel.send("De heks kan niks meer doen")
                 await self.switch_to_day()
@@ -549,10 +578,11 @@ class MyClient(discord.Client):
         if self.react_channel.name == "heks" and self.gameloop_currentrol == "heks":
             if "Dodendrankje" in reaction.message.content:
                 self.heks_response += 1
-                gebruikt = self.killed.append(await self.heks_dood_vote.heks_moord(reaction=reaction))
+                gebruikt = await self.heks_dood_vote.normal_action(reaction=reaction)
+                self.killed.append(gebruikt)
                 del self.heks_dood_vote
                 await reaction.message.delete()
-                if gebruikt:
+                if gebruikt != "**NIEMAND**":
                     self.dooddrankje = False
 
             if "Levensdrankje" in reaction.message.content:
@@ -573,6 +603,12 @@ class MyClient(discord.Client):
                     self.killed.remove("**NIEMAND**")
                 except:
                     pass
+                for speler in [i for i in self.killed]:
+                    if speler.in_love:
+                        await self.het_plein_channel.send(embed=discord.Embed(description="{} was instens verlieft op {} en pleegt zelfmoord".format(speler.in_love.name,speler.name),
+                                colour=discord.Colour(value=16732324)))
+                        self.killed.append(speler.in_love)
+
                 if len(self.killed) > 1:
                     await reaction.message.channel.send(
                     "{} zijn gestorven deze nacht".format(" en ".join([str(speler.name) for speler in self.killed])))
@@ -586,13 +622,13 @@ class MyClient(discord.Client):
                     await self.het_plein_channel.send("{} is de jager hij kiest nu wie hij wil vermoorden".format(jager.name))
                     self.jager_vote = Vote(message_text="Wie wil je doodschieten",
                                            speler_lijst=[i for i in self.players_levend_list if i not in self.killed],
-                                           channel=self.jager_channel)
+                                           channel=self.jager_channel,action_message="{} is doodgeschoten")
                     await self.jager_vote.send_message()
                 else:
                     await self.switch_to_day()
 
         if self.react_channel.name == "jager" and self.gameloop_currentrol == "jager":
-            self.killed.append(await self.jager_vote.jager(reaction=reaction))
+            self.killed.append(await self.jager_vote.normal_action(reaction=reaction))
             del self.jager_vote
             await reaction.message.delete()
 
@@ -611,7 +647,8 @@ class MyClient(discord.Client):
             self.players_levend_list_members =[speler.member for speler in self.player_lijst if speler.levend]
             self.players_levend_list =[speler for speler in self.player_lijst if speler.levend]
 
-        # check for win
+        # win check, zijn er alleen nog maar weerwolfen
+        await self.win_check()
 
         if len(self.killed) > 1:
             await self.het_plein_channel.send("{} hebben de nacht niet overleeft".format(" en ".join([str(speler.name) for speler in self.killed])))
@@ -620,6 +657,7 @@ class MyClient(discord.Client):
                 "{} heeft de nacht niet overleeft".format(" en ".join([str(speler.name) for speler in self.killed])))
         else:
             await self.het_plein_channel.send("Iedereen heeft de nacht overleeft")
+
         for speler in self.killed:
             await self.het_plein_channel.send(embed=discord.Embed(description="{} was {}".format(speler.name,speler.rol_display_name),
                                 colour=discord.Colour(value=2195054)))
@@ -633,7 +671,7 @@ class MyClient(discord.Client):
             self.dag += 1
         else:
             self.gameloop_currentrol = "stemming"
-            await self.het_plein_channel.send("Stem op wie moet worden vermoord\n!stem @Persoon")
+            self.stemming_bericht = await self.het_plein_channel.send("@here We gaan nu stemmen op de persoon die wordt vermoord\n\nStemming:")
             self.dag += 1
 
     def get_reaction_amount(self, reaction):
@@ -670,6 +708,39 @@ class MyClient(discord.Client):
         shuffle(rollen_lijst)
         return rollen_lijst
 
+    async def clean(self):
+        delete_lijst = []
+        for i in self.server.roles:
+            if i.name != "spel Weerwolfen":
+
+                if i.name in ("Jager", "Weerwolf", "Cupido", "Ziener", "Heks", "Burger") or i.name[:4] == "spel":
+                    delete_lijst.append(i)
+        for i in delete_lijst:
+            await i.delete()
+        return
+
+    async def win_check(self):
+        weerwolf_win = True
+        burger_win = True
+
+        for player in self.players_levend_list:
+            print(player.rol_display_name)
+            if player.rol_display_name != "Weerwolf":
+                weerwolf_win = False
+            if player.rol_display_name == "Weerwolf":
+                burger_win = False
+        if weerwolf_win or burger_win:
+            for channel in self.weerwolfen_category.channels:  # delete all channels
+                if isinstance(channel, discord.TextChannel):
+                    await channel.purge(after=channel.created_at)
+            await self.clean()
+            if weerwolf_win:
+                await self.het_plein_channel.send("weewolfen hebben gewonnen")
+            if burger_win:
+                await self.het_plein_channel.send("Burgers hebben gewonnen")
+            return True
+        else:
+            return False
 
 def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
     return "spel" + ''.join(choice(chars) for _ in range(size))
@@ -679,26 +750,4 @@ client = MyClient()
 
 client.run(load(open("config.json", "r"))["key"])
 
-# to do
-
-'''
-Stem syntax moet los komen van stem bericht
-
-Maak Vote class beter door berichten buiten de functie te sturen zodat veel methods naar 1 methode kunnen
-zorg dat doden niet kunnen typen in stemming 
-Stuur een embed message en edit het elke keer
-Fix de rechten van doden
-Zorg voor vermoord descripties
-Skip een rol als dood
-Heks is soms een no show (mischien achter elkaar doen zodat er minder stress is)
-gelievde wordt niet weergegeven als die vermoord is 
-Maak dingen eventuweel een set
-zorg ervoor dat je niet op jezelf kan stemmen
-je kan niet op een doode stemmen verstuurt geen message?
-Error handeling en restart
-delete tijdens stemming alleen messages van het plein channel
-# maak stemming mischien bold
-Jager probleem?? dubbel kill triggert niet of helemaal niet
-Zorg en zeg dat je niet op jezelf kan stemmen
-verander alle listcomprehensions naar generators want holy fuck ze zijn echt zo veel sneller
-'''
+"to do https://trello.com/b/fEsaY7iA/weerwolfen"
